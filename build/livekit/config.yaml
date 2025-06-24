@@ -1,0 +1,33 @@
+# Copyright 2024 LiveKit, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# main TCP port for RoomService and RTC endpoint
+# for production setups, this port should be placed behind a load balancer with TLS
+port: 7880
+
+rtc:
+  port_range_start: 50000
+  port_range_end: 50100
+  # UDP ports to use for client traffic.
+  # this port range should be open for inbound traffic on the firewall
+  # when set, LiveKit enable WebRTC ICE over TCP when UDP isn't available
+  # this port *cannot* be behind load balancer or TLS, and must be exposed on the node
+  # WebRTC transports are encrypted and do not require additional encryption
+  # only 80/443 on public IP are allowed if less than 1024
+  # when set to true, attempts to discover the host's public IP via STUN
+  # this is useful for cloud environments such as AWS & Google where hosts have an internal IP
+  # that maps to an external one
+  use_external_ip: false
+keys:
+  voiceagent: 87d4fe92-33a6-40d0-9ea7-1d14148e039c

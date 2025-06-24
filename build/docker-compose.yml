@@ -1,0 +1,37 @@
+name: realtime-voice-aiagent
+
+services:
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: realtime-voice-nginx
+    network_mode: host
+    volumes:
+      - ./conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/root/certs:ro
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - livekitserver
+      - liveagents
+  backend:
+    image: realtime-voice-backend:latest
+    container_name: realtime-voice-backend
+    ports:
+      - "28010:8000"
+    command: ["python" , "-u", "main.py", "--host", "wss://va.ayanglab.top:28001", "--api-key", "voiceagent", "--api-secret", "87d4fe92-33a6-40d0-9ea7-1d14148e039c"]
+  liveagents:
+    image: realtime-voice-backend:latest
+    container_name: realtime-voice-liveagents
+    network_mode: host
+    command: ["python" , "-u", "simple-agent.py", "start","--url" ,"ws://localhost:7880","--api-key" ,"voiceagent","--api-secret" ,"87d4fe92-33a6-40d0-9ea7-1d14148e039c"]
+
+  livekitserver:
+    image: harbor.xz.com:8448/spiritx-platform/livekit-server:v1.8
+    container_name: realtime-voice-livekitserver
+    network_mode: host
+    volumes:
+      - ./livekit:/data
+    command: ["--config", "/data/config.yaml"]
+  
