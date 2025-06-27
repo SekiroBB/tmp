@@ -4,6 +4,7 @@ from typing import TypedDict,Literal
 from langchain_core.messages import BaseMessage
 from langchain_core.messages import AIMessage,ToolMessage,HumanMessage,SystemMessage
 from typing import AsyncGenerator
+from typing import Literal
 
 LLM_MODEL = "Qwen3-32B-AWQ"
 LLM_BASE_URL = "http://192.168.103.21:31091/spiritx-api/v1"
@@ -20,7 +21,7 @@ class VAState(TypedDict):
 
 RoutingDescription = "选择一个合适的知识库用来回答用户的问题"
 
-type RoutingHandler = Literal["教师知识库","新闻知识库","None"]
+RoutingHandler = Literal["教师知识库","新闻知识库","None"]
 
 knowledge_model = "rag-studio"
 knowledge_base_url = "http://192.168.103.21:11090/ai-supremegpt/api/v1"
