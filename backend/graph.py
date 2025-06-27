@@ -1,38 +1,47 @@
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel,Field,SecretStr
-from typing import TypedDict,Literal
+from pydantic import BaseModel, Field, SecretStr
+from typing import TypedDict, Literal
 from langchain_core.messages import BaseMessage
-from langchain_core.messages import AIMessage,ToolMessage,HumanMessage,SystemMessage
+from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
 from typing import AsyncGenerator
 from typing import Literal
 
+# 设置主 LLM 模型名称
 LLM_MODEL = "Qwen3-32B-AWQ"
+# 设置主 LLM 的 API 地址
 LLM_BASE_URL = "http://192.168.103.21:31091/spiritx-api/v1"
+# 设置主 LLM 的 API KEY，并用 SecretStr 保护
 LLM_API_KEY = SecretStr("sk-7NAitPWQhdhwT2AR66Cc27E060664741A143E38eFbB33bE6")
 
+# 实例化主聊天 LLM
 llm = ChatOpenAI(model=LLM_MODEL, base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
 
-
+# 定义 VAState 类型，包含消息历史、决策和输出
 class VAState(TypedDict):
-    messages: list[BaseMessage]
-    decision: str
-    output: str
+    messages: list[BaseMessage]   # 消息历史（对话上下文）
+    decision: str                 # 路由决策（知识库选择）
+    output: str                   # 最终输出内容
 
-
+# 路由选择描述
 RoutingDescription = "选择一个合适的知识库用来回答用户的问题"
 
-RoutingHandler = Literal["教师知识库","新闻知识库","None"]
+# 路由处理类型，枚举三种情况
+RoutingHandler = Literal["教师知识库", "新闻知识库", "None"]
 
+# 知识库 LLM 模型及 API 地址
 knowledge_model = "rag-studio"
 knowledge_base_url = "http://192.168.103.21:11090/ai-supremegpt/api/v1"
 
+# 实例化教师知识库的 LLM
 teacher_llm = ChatOpenAI(model=knowledge_model, base_url=knowledge_base_url, api_key=SecretStr("xzinfra-ae1b0913ca844e05babd60ee851a7d8e"))
+# 实例化新闻知识库的 LLM
 news_llm = ChatOpenAI(model=knowledge_model, base_url=knowledge_base_url, api_key=SecretStr("xzinfra-e83e3e1ee18e4126bda9545214a576db"))
 
-
+# 定义路由器的数据结构，要求 routing 字段由 RoutingHandler 枚举类型限定
 class Routing(BaseModel):
     routing: RoutingHandler = Field(description=RoutingDescription)
 
+# 路由系统提示词，告诉 LLM 如何根据问题选择知识库
 router_system_prompt = """
 你是一个路由器,你的任务是根据用户的问题选择一个合适的知识库.
 如果用户的问题不需要知识库,则选择None.
@@ -49,59 +58,77 @@ router_system_prompt = """
 
 """
 
+# 用于路由决策的 LLM，强制输出结构化 Routing 格式
 router_llm = llm.with_structured_output(Routing)
-# Node
+
+# 路由决策节点，异步函数
 async def routing_llm(state: VAState):
-    messages=[SystemMessage(content=router_system_prompt),*state["messages"]]
+    # 构造消息列表：系统提示+历史对话
+    messages = [SystemMessage(content=router_system_prompt), *state["messages"]]
+    # 让路由 LLM 作出决策
     result = await router_llm.ainvoke(messages)
+    # 返回决策结果
     return {"decision": result.routing}
 
-
+# 聊天节点，根据路由决策调用不同知识库
 async def chat(state: VAState):
-    print(f"state: {state}")
+    print(f"state: {state}")  # 打印当前状态用于调试
+    # 如果决策是教师知识库，调用教师 LLM
     if state["decision"] == "教师知识库":
         result = await teacher_llm.ainvoke(state["messages"])
+    # 如果决策是新闻知识库，调用新闻 LLM
     elif state["decision"] == "新闻知识库":
         result = await news_llm.ainvoke(state["messages"])
+    # 如果没有知识库需求，走主 LLM
     else:
         result = await llm.ainvoke(state["messages"])
+    # 返回 LLM 输出
     return {"output": result.content}
-    
-    
-from langgraph.graph import StateGraph,START,END
 
+# 导入 LangGraph 的 StateGraph 及节点标记
+from langgraph.graph import StateGraph, START, END
+
+# 创建一个有向图，描述对话流程，输入类型为 VAState
 graph_builder = StateGraph(VAState)
 
-graph_builder.add_node("routing",routing_llm)
-graph_builder.add_node("chat",chat)
+# 添加路由节点和聊天节点
+graph_builder.add_node("routing", routing_llm)
+graph_builder.add_node("chat", chat)
 
+# 设置流程：起点 -> 路由 -> 聊天 -> 终点
 graph_builder.add_edge(START, "routing")
 graph_builder.add_edge("routing", "chat")
 graph_builder.add_edge("chat", END)
 
+# 编译流程图，得到异步可执行的 graph
 graph = graph_builder.compile()
 
-async def arun(messages) -> AsyncGenerator[tuple[str,str],None]:
-    input = {"messages":messages}
-    async for mode,chunk in graph.astream(input,stream_mode=["updates","messages"]):
+# 定义异步生成器，驱动整个对话流程
+async def arun(messages) -> AsyncGenerator[tuple[str, str], None]:
+    input = {"messages": messages}
+    # 通过 graph.astream 执行流程，获得实时流式输出
+    async for mode, chunk in graph.astream(input, stream_mode=["updates", "messages"]):
+        # 如果是消息流，且到达 chat 节点，输出文本内容
         if mode == "messages":
-            chunk,info = chunk
+            chunk, info = chunk
             if info["langgraph_node"] == "chat":
-                yield ("text",chunk.content)
+                yield ("text", chunk.content)
+        # 如果是状态更新流，且有 chat 输出，输出消息内容
         elif mode == "updates":
             if "chat" in chunk:
-                yield ("message",chunk["chat"]["output"])
+                yield ("message", chunk["chat"]["output"])
 
-
+# 主程序，测试入口
 async def main():
-    
+    # 构造初始消息（用户问题）
     messages = [HumanMessage(content="介绍陈文龙教授")]
-    async for type,chunk in arun(messages):
+    # 迭代输出模型回复
+    async for type, chunk in arun(messages):
         if type == "text":
             print(chunk, end="", flush=True)
     print()
 
+# 如果作为主程序执行，运行 main 协程
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
-
