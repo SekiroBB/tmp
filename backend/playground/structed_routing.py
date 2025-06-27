@@ -47,7 +47,7 @@ from typing import Literal,List
 
 RoutingDescription = "选择一个合适的知识库用来回答用户的问题"
 
-type RoutingHandler = List[Literal["教师知识库","新闻知识库","None"]]
+RoutingHandler = List[Literal["教师知识库","新闻知识库","None"]]
 
 class Routing(BaseModel):
     routing: RoutingHandler = Field(description=RoutingDescription)

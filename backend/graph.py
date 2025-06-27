@@ -5,6 +5,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
 from typing import AsyncGenerator
 from typing import Literal
+from transcription import rewrite_text
 
 # 设置主 LLM 模型名称
 LLM_MODEL = "Qwen3-32B-AWQ"
@@ -121,7 +122,7 @@ async def arun(messages) -> AsyncGenerator[tuple[str, str], None]:
 # 主程序，测试入口
 async def main():
     # 构造初始消息（用户问题）
-    messages = [HumanMessage(content="介绍陈文龙教授")]
+    messages = [HumanMessage(content="学院最近的新闻")]
     # 迭代输出模型回复
     async for type, chunk in arun(messages):
         if type == "text":
