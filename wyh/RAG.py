@@ -34,6 +34,9 @@ RoutingHandler = List[Literal["教师知识库", "新闻知识库", "None"]]
 class Routing(BaseModel):
     routing: RoutingHandler = Field(description=RoutingDescription)
 
+class SubstatementsResponse(BaseModel):
+    substatements: List[str] = Field(description="List of substatements extracted from the user query")
+
 # 路由系统提示词，告诉 LLM 如何根据问题选择知识库
 router_system_prompt = """
 你是一个路由器,你的任务是根据用户的问题选择一个合适的知识库.
@@ -53,9 +56,24 @@ router_system_prompt = """
 
 # 用于路由决策的 LLM，强制输出结构化 Routing 格式
 router_llm = llm.with_structured_output(Routing)
+# 创建专用的LLM实例
+substatement_llm = llm.with_structured_output(SubstatementsResponse)
 
 # 知识库搜索API地址
 kbSearchURL = 'http://192.168.103.21:11090/ai-supremegpt/api/kb/kb_search'
+
+# 划分子语句模型提示词
+substatement_system_promt = """
+#身份定义: 你的主要作用是根据用户的提问提炼出不同的方向的语句。
+#功能作用: 如果是教师的信息，请给出有关教师部分的提问；如果是新闻的信息，请给出有关新闻部分的提问。
+#输出格式: 以列表的形式回答，列表中包含多个字符串元素。
+#示例1: 
+用户提问：请介绍一下邱德慧老师，并告诉我她最近参加了什么活动。
+你给出的答案：["介绍一下邱德慧老师", "邱德慧老师最近参加了什么活动"]
+#示例2: 
+用户提问：唐晓岚老师最近参加过什么活动吗，她是教授吗。
+你给出的答案：["唐晓岚老师最近参加过什么活动吗", "唐晓岚老师是教授吗"]
+"""
 
 # 对话系统的提示词
 chat_system_promt = """
@@ -84,7 +102,7 @@ def request(kbName, query):
     # 请求体（字典形式，requests 会自动转换为 JSON）
     payload = {
         "kb_args_config": {
-            "rerank": True,
+            "rerank": False,
             "lowest_relevance": 0.2,
             "max_quotation": 24000,
             "empty_search_enabled": False,
@@ -93,7 +111,7 @@ def request(kbName, query):
             "completion_model_id": "",
             "completion_context": "",
             "retrieval_top_n": 20,
-            "retrieval_type": "embedding",
+            "retrieval_type": "hybrid",
             "file_quote_max_length": 80000
         },
         "kb_id": kb_id,
@@ -135,7 +153,19 @@ async def getQuotes(state: VAState):
     if user_message is None:
         user_message = ""
     decisions = state["decision"]
-    for decision in decisions:
+
+    if len(decisions) >= 2:
+        substatements_result = await substatement_llm.ainvoke([SystemMessage(content=substatement_system_promt), user_message])
+        substatements = substatements_result.substatements
+        i = 0
+        for decision in decisions:
+            if decision != "None":
+                quotes = request(decision, substatements[i])
+                i += 1
+                for quote in quotes:
+                    state["quotes"].append(quote)
+    else:
+        decision = decisions[0]
         if decision != "None":
             quotes = request(decision, user_message)
             for quote in quotes:
@@ -201,7 +231,7 @@ async def arun(messages) -> AsyncGenerator[tuple[str, str], None]:
 # 主程序，测试入口
 async def main():
     # 构造初始消息（用户问题）
-    messages = [HumanMessage(content="学院最近的新闻，以及学院的教授都有谁")]
+    messages = [HumanMessage(content="给我一些最近学院的新闻, 并给出学院的教授都有谁")]
     # 迭代输出模型回复
     async for type, chunk in arun(messages):
         if type == "outputs":
