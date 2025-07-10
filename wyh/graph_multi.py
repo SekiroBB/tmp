@@ -16,7 +16,7 @@ LLM_API_KEY = SecretStr("sk-7NAitPWQhdhwT2AR66Cc27E060664741A143E38eFbB33bE6")
 
 # 实例化主聊天 LLM
 llm = ChatOpenAI(model=LLM_MODEL, base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
-
+#123
 # 定义 VAState 类型，包含消息历史、决策和输出
 class VAState(TypedDict):
     messages: list[BaseMessage]   # 消息历史（对话上下文）
